@@ -35,7 +35,7 @@
 - 服务端会针对该账号生成 **雪花 ID** 并缓存 5 分钟，短时间内重复申请会返回"请稍后再试"。
   > The server will generate a **Snowflake ID** for this account and cache it for 5 minutes. Repeated applications in a short period of time will return "Please try again later".
 - `access_code` 明文结构：`SecretKey|PasswordHash|Timestamp|SnowflakeID|PublicKey`，随后使用 `SecretKey` 做 AES256 加密；公钥配置位于 `backend/config/application.yml -> security.encrypt.AES.publicKey`，也可用环境变量 `SECURITY_ENCRYPT_AES_PUBLIC_KEY` 覆盖。
- > The plaintext structure of `access_code`: `SecretKey|PasswordHash|Timestamp|SnowflakeID|PublicKey`, then encrypted with AES256 using `SecretKey`; the public key configuration is located at `backend/config/application.yml -> security.encrypt.AES.publicKey`, or can be overridden with the environment variable `SECURITY_ENCRYPT_AES_PUBLIC_KEY`.
+  > The plaintext structure of `access_code`: `SecretKey|PasswordHash|Timestamp|SnowflakeID|PublicKey`, then encrypted with AES256 using `SecretKey`; the public key configuration is located at `backend/config/application.yml -> security.encrypt.AES.publicKey`, or can be overridden with the environment variable `SECURITY_ENCRYPT_AES_PUBLIC_KEY`.
 - 客户端需用 `密钥 + 雪花ID` 作为 AES256 Key，再对 access_code（完整密文）进行加密得到 `authCode`。 雪花ID 不会直接返回，可在第二步解密失败时判断是否过期；建议客户端和服务端约定同一雪花ID只使用一次。
   > The client needs to use `Secret Key + Snowflake ID` as the AES256 Key, then encrypt the access_code (complete ciphertext) to obtain the `authCode`.  
   > The Snowflake ID is not returned directly, and can be used to determine if it has expired when decryption fails in the second step; it is recommended that the client and server agree to use the same Snowflake ID only once.
