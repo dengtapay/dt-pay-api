@@ -357,8 +357,7 @@ encrypted += cipher.final('base64');
 const authCode = Buffer.concat([iv, Buffer.from(encrypted, 'base64')]).toString('base64');
 ```
 
-再调用：
-> Then call:
+再调用(Then call):
 
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8099/api/auth/oauth2/secret-key \
