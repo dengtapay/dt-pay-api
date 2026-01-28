@@ -119,7 +119,7 @@ Content-Type: application/json
 - `remark` (可选 / Optional): 订单备注 / Order remarks
 
 **响应示例 / Response Example：**
-``json
+```json
 {
   "errorCode": 0,
   "message": "创建成功 / Created successfully",
@@ -198,7 +198,7 @@ Content-Type: application/json
 - `remark` (可选 / Optional): 订单备注 / Order remarks
 
 **响应示例 / Response Example：**
-``json
+```json
 {
   "errorCode": 0,
   "message": "创建成功 / Created successfully",
@@ -233,7 +233,7 @@ Content-Type: application/json
 - `500`: 创建订单失败 / Order creation failed
 
 **使用示例 / Usage Example：**
-``bash
+```bash
 curl -X POST http://localhost:8099/api/merchant/orders/payout/create \
   -H "Authorization: Bearer your-token-here" \
   -H "Content-Type: application/json" \
@@ -346,7 +346,7 @@ echo "access_code: $ACCESS_CODE"
 伪代码示例（Node.js）：
 > Sample pseudo code (Node.js):
 
-``javascript
+```javascript
 const crypto = require('crypto');
 const snowflakeId = /* 客户端与服务端约定保存的雪花ID / Snowflake ID agreed upon by client and server */;
 const key = crypto.createHash('sha256').update(`${secretKey}:${snowflakeId}`).digest();
