@@ -115,7 +115,7 @@ Content-Type: application/json
 **参数说明 / Parameter Description：**
 - `amount` (必填 / Required): 订单金额，浮点数 / Order amount, floating point number
 - `channelCode` (必填 / Required): 通道代码，字符串 / Channel code, string
-- `currencyCode` (可选 / Optional): 币种代码，默认为"CNY" / Currency code, default is "CNY"
+- `currencyCode` (必填 / Required): 币种代码，字符串 / Currency code, string
 - `remark` (可选 / Optional): 订单备注 / Order remarks
 
 **响应示例 / Response Example：**
@@ -193,7 +193,7 @@ Content-Type: application/json
 - `payeeAccount` (必填 / Required): 收款账户 / Payee account
 - `amount` (必填 / Required): 订单金额，浮点数 / Order amount, floating point number
 - `channelCode` (必填 / Required): 通道代码 / Channel code
-- `currencyCode` (可选 / Optional): 币种代码，默认为"CNY" / Currency code, default is "CNY"
+- `currencyCode` (必填 / Required): 币种代码 / Currency code
 - `payoutType` (可选 / Optional): 代付类型，默认为"system" / Payout type, default is "system"
 - `remark` (可选 / Optional): 订单备注 / Order remarks
 
