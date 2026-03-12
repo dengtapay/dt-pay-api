@@ -42,7 +42,7 @@
 
 #### 第二步：使用 authCode 换取 Token / Step 2: Use authCode to Exchange for Token
 
-- **接口地址 / API Address：** `POST /api/oauth2/merchant/secret-key`
+- **接口地址 / API Address：** `POST /api/oauth2/merchant/secret/login`
 - **请求头 / Request Headers：** `Content-Type: application/json`
 - **请求体 / Request Body：**
   ```json
@@ -360,7 +360,7 @@ const authCode = Buffer.concat([iv, Buffer.from(encrypted, 'base64')]).toString(
 再调用(Then call):
 
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:8099/api/oauth2/merchant/secret-key \
+TOKEN=$(curl -s -X POST http://localhost:8099/api/oauth2/merchant/secret/login \
   -H "Content-Type: application/json" \
   -d "{\"account\":\"merchant001\",\"authCode\":\"$AUTH_CODE\"}" \
   | jq -r '.result.token')
