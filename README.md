@@ -14,7 +14,7 @@
 
 #### 第一步：获取授权码 access_code / Step 1: Obtain Authorization Code access_code
 
-- **接口地址 / API Address：** `POST /api/oauth2/merchantaccess-code`
+- **接口地址 / API Address：** `POST /api/oauth2/merchant/access-code`
 - **请求头 / Request Headers：** `Content-Type: application/json`
 - **请求体 / Request Body：**
   ```json
@@ -42,7 +42,7 @@
 
 #### 第二步：使用 authCode 换取 Token / Step 2: Use authCode to Exchange for Token
 
-- **接口地址 / API Address：** `POST /api/oauth2/merchantsecret-key`
+- **接口地址 / API Address：** `POST /api/oauth2/merchant/secret-key`
 - **请求头 / Request Headers：** `Content-Type: application/json`
 - **请求体 / Request Body：**
   ```json
@@ -335,7 +335,7 @@ Authorization: Bearer {token}
 ### 步骤1: 申请 access_code / Step 1: Request access_code
 
 ```bash
-ACCESS_CODE=$(curl -s -X POST http://localhost:8099/api/oauth2/merchantaccess-code \
+ACCESS_CODE=$(curl -s -X POST http://localhost:8099/api/oauth2/merchant/access-code \
   -H "Content-Type: application/json" \
   -d '{"account":"merchant001"}' | jq -r '.result.accessCode')
 echo "access_code: $ACCESS_CODE"
@@ -360,7 +360,7 @@ const authCode = Buffer.concat([iv, Buffer.from(encrypted, 'base64')]).toString(
 再调用(Then call):
 
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:8099/api/oauth2/merchantsecret-key \
+TOKEN=$(curl -s -X POST http://localhost:8099/api/oauth2/merchant/secret-key \
   -H "Content-Type: application/json" \
   -d "{\"account\":\"merchant001\",\"authCode\":\"$AUTH_CODE\"}" \
   | jq -r '.result.token')
