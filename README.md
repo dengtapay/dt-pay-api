@@ -9,8 +9,71 @@
 
 ### 1. 密钥 OAuth2 登录（双步骤） / Secret Key OAuth2 Login (Two Steps)
 
-为提升安全性，商户端密钥登录拆分为两步：
-> To enhance security, the merchant-side secret key login is divided into two steps:
+为提升安全性，商户端密钥登录拆分为两步，**第一步需要签名验证**：
+> To enhance security, the merchant-side secret key login is divided into two steps, **step 1 requires signature verification**:
+
+#### 签名规则 / Signature Rules
+
+第一步获取授权码需要携带时间戳和签名，签名方式为 **HMAC-SHA256**：
+> Step 1 to obtain authorization code requires timestamp and signature, using **HMAC-SHA256**:
+
+- **签名密钥 / Signing Key**: 账户的 SecretKey
+- **签名算法 / Signature Algorithm**: HMAC-SHA256
+- **签名内容 / Signature Content**: `timestamp + "|" + account`
+- **时间戳有效期 / Timestamp Validity**: 2分钟 / 2 minutes
+
+**签名示例 / Signature Example:**
+
+**浏览器环境 (Web Crypto API) / Browser Environment:**
+```javascript
+// 生成 HMAC-SHA256 签名 / Generate HMAC-SHA256 signature
+async function generateSign(timestamp, account, secretKey) {
+  const signContent = `${timestamp}|${account}`;
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(secretKey);
+  const messageData = encoder.encode(signContent);
+
+  // 导入密钥 / Import key
+  const key = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  // 生成签名 / Generate signature
+  const signature = await crypto.subtle.sign('HMAC', key, messageData);
+
+  // 转换为十六进制字符串 / Convert to hex string
+  return Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+// 使用示例 / Usage example
+const timestamp = Math.floor(Date.now() / 1000);
+const account = 'merchant001';
+const secretKey = 'your-secret-key';
+
+generateSign(timestamp, account, secretKey).then(sign => {
+  console.log('sign:', sign);
+});
+```
+
+**Node.js 环境 / Node.js Environment:**
+```javascript
+const crypto = require('crypto');
+
+// 签名内容 / Signature content
+const signContent = timestamp + "|" + account;
+
+// 生成签名 / Generate signature
+const sign = crypto.createHmac('sha256', secretKey).update(signContent).digest('hex');
+```
+
+> ⚠️ **注意 / Note**: `require('crypto')` 仅在 Node.js 环境可用，浏览器请使用 Web Crypto API。
+> `require('crypto')` is only available in Node.js environment, please use Web Crypto API in browser.
 
 #### 第一步：获取授权码 access_code / Step 1: Obtain Authorization Code access_code
 
@@ -19,26 +82,33 @@
 - **请求体 / Request Body：**
   ```json
   {
-    "account": "merchant001"
+    "account": "merchant001",
+    "timestamp": 1739548800,
+    "sign": "a1b2c3d4e5f6..."
   }
   ```
+- **参数说明 / Parameter Description：**
+  - `account` (必填): 商户账号 / Merchant account
+  - `timestamp` (必填): Unix时间戳（秒）/ Unix timestamp (seconds)
+  - `sign` (必填): HMAC-SHA256签名 / HMAC-SHA256 signature
+
+- **签名内容 / Signature Content**: `timestamp + "|" + account`
+
 - **响应示例 / Response Example：**
   ```json
   {
     "errorCode": 0,
-    "message": "获取授权码成功 / Access code obtained successfully",
+    "message": "success",
     "result": {
-      "accessCode": "base64-aes256-string"
+      "accessCode": "550e8400-e29b-41d4-a716-446655440000"
     }
   }
   ```
-- 服务端会针对该账号生成 **雪花 ID** 并缓存 5 分钟，短时间内重复申请会返回"请稍后再试"。
-  > The server will generate a **Snowflake ID** for this account and cache it for 5 minutes. Repeated applications in a short period of time will return "Please try again later".
-- `access_code` 明文结构：`SecretKey|PasswordHash|Timestamp|SnowflakeID|PublicKey`，随后使用 `SecretKey` 做 AES256 加密；公钥配置位于 `backend/config/application.yml -> security.encrypt.AES.publicKey`，也可用环境变量 `SECURITY_ENCRYPT_AES_PUBLIC_KEY` 覆盖。
-  > The plaintext structure of `access_code`: `SecretKey|PasswordHash|Timestamp|SnowflakeID|PublicKey`, then encrypted with AES256 using `SecretKey`; the public key configuration is located at `backend/config/application.yml -> security.encrypt.AES.publicKey`, or can be overridden with the environment variable `SECURITY_ENCRYPT_AES_PUBLIC_KEY`.
-- 客户端需用 `密钥 + 雪花ID` 作为 AES256 Key，再对 access_code（完整密文）进行加密得到 `authCode`。 雪花ID 不会直接返回，可在第二步解密失败时判断是否过期；建议客户端和服务端约定同一雪花ID只使用一次。
-  > The client needs to use `Secret Key + Snowflake ID` as the AES256 Key, then encrypt the access_code (complete ciphertext) to obtain the `authCode`.  
-  > The Snowflake ID is not returned directly, and can be used to determine if it has expired when decryption fails in the second step; it is recommended that the client and server agree to use the same Snowflake ID only once.
+
+- **错误码 / Error Codes：**
+  - `400`: 参数错误 / 请求已过期 / Parameter error / Request expired
+  - `401`: 签名验证失败 / Signature verification failed
+  - `404`: 账户不存在或未激活 / Account does not exist or not activated
 
 #### 第二步：使用 authCode 换取 Token / Step 2: Use authCode to Exchange for Token
 
@@ -48,11 +118,13 @@
   ```json
   {
     "account": "merchant001",
-    "authCode": "base64-aes256-string"
+    "authCode": "550e8400-e29b-41d4-a716-446655440000"
   }
   ```
-  `authCode` = 使用 `密钥 + 雪花ID` 为 Key，对 access_code 做 AES256 加密的结果。
-  > `authCode` = The result of AES256 encryption of access_code using `Secret Key + Snowflake ID` as the Key.
+- **参数说明 / Parameter Description：**
+  - `account` (必填): 商户账号 / Merchant account
+  - `authCode` (必填): 第一步获取的授权码（2分钟内有效，一次性使用）/ Authorization code from step 1 (valid for 2 minutes, one-time use)
+
 - **响应示例 / Response Example：**
   ```json
   {
@@ -60,8 +132,8 @@
     "message": "登录成功 / Login successful",
     "result": {
       "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "expiresIn": 86400,
-    "account": {
+    "expiresIn": 28800,
+    "user": {
         "id": 1,
         "account": "merchant001",
         "accountType": "merchant"
@@ -69,21 +141,73 @@
     }
   }
   ```
+
 - **常见错误码 / Common Error Codes：**
-  - `400`: 参数错误 / 授权码过期或格式不正确 / Parameter error / Authorization code expired or incorrectly formatted
-  - `401`: 授权码校验失败 / Authorization code verification failed
-  - `403`: 账户被禁用 / Account disabled
-  - `500`: 服务器内部错误 / Internal server error
+    - `400`: 参数错误 / 授权码过期或格式不正确 / Parameter error / Authorization code expired or incorrectly formatted
+    - `403`: 账户被禁用 / Account disabled
+    - `404`: 账户不存在或未激活 / Account does not exist or not activated
+    - `500`: 服务器内部错误 / Internal server error
 
 **参考流程 / Reference Process：**
-1. 调用 `/access-code` 获取 access_code。
-   Call `/access-code` to get access_code.
-2. 使用密钥串和雪花ID作为 AES Key，调用 `AES256Encrypt(access_code)` 得到 authCode。
-   Use the secret key string and Snowflake ID as the AES Key, call `AES256Encrypt(access_code)` to get authCode.
-3. 将 `account + authCode` 提交至 `/secret-key` 换取 JWT。
-   Submit `account + authCode` to `/secret-key` to exchange for JWT.
-4. JWT 有效期 24h，可通过 `Authorization: Bearer {token}` 调用后续接口。
-   JWT is valid for 24 hours, subsequent interfaces can be called via `Authorization: Bearer {token}`.
+1. 使用账户的 SecretKey 生成签名，调用 `/access-code` 获取 access_code。
+   Use the account's SecretKey to generate a signature, call `/access-code` to get access_code.
+2. 提交 `account + authCode` 至 `/secret/login` 换取 JWT（authCode 2分钟内有效，一次性使用）。
+   Submit `account + authCode` to `/secret/login` to exchange for JWT (authCode valid for 2 minutes, one-time use).
+3. JWT 有效期 8小时，可通过 `Authorization: Bearer {token}` 调用后续接口。
+   JWT is valid for 8 hours, subsequent interfaces can be called via `Authorization: Bearer {token}`.
+
+#### Js完整登录示例 / Quick Test in Browser Console
+
+复制以下代码到浏览器控制台运行即可快速测试登录接口：
+> Copy the following code to browser console to quickly test the login interface:
+
+```javascript
+// 配置 / Config
+const account = 'merchant001';
+const secretKey = 'your-secret-key';  // 替换为实际密钥 / Replace with actual secret key
+const baseUrl = 'http://localhost:8099';
+
+// 生成签名 / Generate signature
+async function generateSign(timestamp, account, key) {
+  const signContent = `${timestamp}|${account}`;
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(key);
+  const messageData = encoder.encode(signContent);
+  const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+  return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// 测试登录 / Test login
+async function testLogin() {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const sign = await generateSign(timestamp, account, secretKey);
+  console.log('timestamp:', timestamp);
+  console.log('sign:', sign);
+
+  // Step 1: 获取 access_code
+  const r1 = await fetch(`${baseUrl}/api/oauth2/merchant/access-code`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ account, timestamp, sign })
+  });
+  const d1 = await r1.json();
+  console.log('Step 1 response:', d1);
+  if (d1.errorCode !== 0) return;
+
+  // Step 2: 获取 Token
+  const r2 = await fetch(`${baseUrl}/api/oauth2/merchant/secret/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ account, authCode: d1.result.accessCode })
+  });
+  const d2 = await r2.json();
+  console.log('Step 2 response:', d2);
+  return d2.result?.token;
+}
+
+testLogin();
+```
 
 ---
 
@@ -335,38 +459,133 @@ Authorization: Bearer {token}
 ### 步骤1: 申请 access_code / Step 1: Request access_code
 
 ```bash
+# 生成时间戳 / Generate timestamp
+TIMESTAMP=$(date +%s)
+
+# 生成签名（需要SecretKey）/ Generate signature (requires SecretKey)
+# 签名内容: timestamp + "|" + account
+# 签名方式: HMAC-SHA256
+# 示例: echo -n "1739548800|merchant001" | openssl dgst -sha256 -hmac "your-secret-key"
+
 ACCESS_CODE=$(curl -s -X POST http://localhost:8099/api/oauth2/merchant/access-code \
   -H "Content-Type: application/json" \
-  -d '{"account":"merchant001"}' | jq -r '.result.accessCode')
+  -d "{\"account\":\"merchant001\",\"timestamp\":$TIMESTAMP,\"sign\":\"your-signature\"}" \
+  | jq -r '.result.accessCode')
 echo "access_code: $ACCESS_CODE"
 ```
 
-### 步骤2: 生成 authCode 并获取 Token / Step 2: Generate authCode and Obtain Token
-
-伪代码示例（Node.js）：
-> Sample pseudo code (Node.js):
-
-```javascript
-const crypto = require('crypto');
-const snowflakeId = /* 客户端与服务端约定保存的雪花ID / Snowflake ID agreed upon by client and server */;
-const key = crypto.createHash('sha256').update(`${secretKey}:${snowflakeId}`).digest();
-const iv = crypto.randomBytes(12);
-const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-let encrypted = cipher.update(accessCode, 'utf8', 'base64');
-encrypted += cipher.final('base64');
-const authCode = Buffer.concat([iv, Buffer.from(encrypted, 'base64')]).toString('base64');
-```
-
-再调用(Then call):
+### 步骤2: 获取 Token / Step 2: Obtain Token
 
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8099/api/oauth2/merchant/secret/login \
   -H "Content-Type: application/json" \
-  -d "{\"account\":\"merchant001\",\"authCode\":\"$AUTH_CODE\"}" \
+  -d "{\"account\":\"merchant001\",\"authCode\":\"$ACCESS_CODE\"}" \
   | jq -r '.result.token')
+echo "token: $TOKEN"
 ```
 
-### 步骤2: 创建代收订单 / Step 2: Create Collection Order
+### 浏览器完整示例 / Browser Complete Example
+
+```javascript
+const account = 'merchant001';
+const secretKey = 'your-secret-key';
+const baseUrl = 'http://localhost:8099';
+
+// 生成 HMAC-SHA256 签名（浏览器环境）/ Generate HMAC-SHA256 signature (Browser)
+async function generateSign(timestamp, account, key) {
+  const signContent = `${timestamp}|${account}`;
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(key);
+  const messageData = encoder.encode(signContent);
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+  return Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function login() {
+  // Step 1: 获取 access_code / Get access_code
+  const timestamp = Math.floor(Date.now() / 1000);
+  const sign = await generateSign(timestamp, account, secretKey);
+
+  const response1 = await fetch(`${baseUrl}/api/oauth2/merchant/access-code`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ account, timestamp, sign })
+  });
+  const data1 = await response1.json();
+  const authCode = data1.result.accessCode;
+  console.log('access_code:', authCode);
+
+  // Step 2: 获取 Token / Get Token (无需签名 / No signature required)
+  const response2 = await fetch(`${baseUrl}/api/oauth2/merchant/secret/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ account, authCode })
+  });
+  const data2 = await response2.json();
+  console.log('token:', data2.result.token);
+
+  return data2.result.token;
+}
+
+login();
+```
+
+### Node.js 完整示例 / Node.js Complete Example
+
+```javascript
+const crypto = require('crypto');
+
+const account = 'merchant001';
+const secretKey = 'your-secret-key';
+const baseUrl = 'http://localhost:8099';
+
+// 生成签名 / Generate signature
+function generateSign(content, key) {
+  return crypto.createHmac('sha256', key).update(content).digest('hex');
+}
+
+async function login() {
+  // Step 1: 获取 access_code / Get access_code
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signContent = `${timestamp}|${account}`;
+  const sign = generateSign(signContent, secretKey);
+
+  const response1 = await fetch(`${baseUrl}/api/oauth2/merchant/access-code`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ account, timestamp, sign })
+  });
+  const data1 = await response1.json();
+  const authCode = data1.result.accessCode;
+  console.log('access_code:', authCode);
+
+  // Step 2: 获取 Token / Get Token (无需签名 / No signature required)
+  const response2 = await fetch(`${baseUrl}/api/oauth2/merchant/secret/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ account, authCode })
+  });
+  const data2 = await response2.json();
+  console.log('token:', data2.result.token);
+
+  return data2.result.token;
+}
+
+login();
+```
+
+### 步骤3: 创建代收订单 / Step 3: Create Collection Order
 
 ```bash
 curl -X POST http://localhost:8099/api/merchant/orders/collect/create \
