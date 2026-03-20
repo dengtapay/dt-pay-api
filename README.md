@@ -274,8 +274,6 @@ Content-Type: application/json
     "fee": 6.00,
     "rate": 0.6,
     "channelId": 7,
-    "channelCode": "BEEPAY",
-    "channelName": "BeePay",
     "currencyCode": "INR",
     "status": "pending",
     "remark": "订单备注信息 / Order remarks",
@@ -287,7 +285,6 @@ Content-Type: application/json
 
 **响应字段说明 / Response Field Description：**
 - `orderNo`: 系统订单号 / System order number
-- `channelCode`: 系统自动选择的通道代码 / Channel code automatically selected by the system
 - `channelName`: 通道名称 / Channel name
 - `paymentUrl`: 支付页面地址（部分通道返回）/ Payment page URL (returned by some channels)
 - `fee`: 手续费 / Fee
@@ -369,9 +366,6 @@ Content-Type: application/json
     "singleFee": 0.3,
     "additionalFee": 0.05,
     "withdrawalTime": 2,
-    "channelId": 7,
-    "channelCode": "BEEPAY",
-    "channelName": "BeePay",
     "currencyCode": "INR",
     "status": "pending",
     "remark": "代付备注 / Payout remarks",
