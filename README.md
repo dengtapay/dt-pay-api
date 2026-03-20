@@ -257,9 +257,6 @@ Content-Type: application/json
 - `email` (可选 / Optional): 客户邮箱，部分通道需要 / Customer email, required by some channels
 - `account` (可选 / Optional): 客户账号，部分通道需要 / Customer account, required by some channels
 
-> ⚠️ **通道选择说明 / Channel Selection Note**: 系统会根据币种、费率等因素自动选择最优通道，商户无需关心具体通道。响应中会返回实际使用的通道信息。
-> The system automatically selects the optimal channel based on currency, fees, etc. Merchants do not need to care about the specific channel. The response returns the actual channel used.
-
 **响应示例 / Response Example：**
 ```json
 {
@@ -273,7 +270,6 @@ Content-Type: application/json
     "amount": 1000.00,
     "fee": 6.00,
     "rate": 0.6,
-    "channelId": 7,
     "currencyCode": "INR",
     "status": "pending",
     "remark": "订单备注信息 / Order remarks",
@@ -285,7 +281,6 @@ Content-Type: application/json
 
 **响应字段说明 / Response Field Description：**
 - `orderNo`: 系统订单号 / System order number
-- `channelName`: 通道名称 / Channel name
 - `paymentUrl`: 支付页面地址（部分通道返回）/ Payment page URL (returned by some channels)
 - `fee`: 手续费 / Fee
 - `rate`: 费率 / Rate
@@ -316,7 +311,7 @@ curl -X POST http://localhost:8099/api/merchant/orders/collect/create \
 
 ### 2. 创建代付订单 / Create Payout Order
 
-创建代付订单接口，需要Token认证。**系统会自动选择最优通道**。
+创建代付订单接口，需要Token认证。
 > Create payout order interface, requires Token authentication. **The system automatically selects the optimal channel**.
 
 **接口地址 / API Address：** `POST /api/merchant/orders/payout/create`
@@ -344,9 +339,6 @@ Content-Type: application/json
 - `amount` (必填 / Required): 订单金额，浮点数 / Order amount, floating point number
 - `currencyCode` (必填 / Required): 币种代码 / Currency code
 - `remark` (可选 / Optional): 订单备注 / Order remarks
-
-> ⚠️ **通道选择说明 / Channel Selection Note**: 代付订单同样由系统自动选择通道，且会检查通道余额是否充足。
-> Payout orders also have channels automatically selected by the system, and will check if the channel balance is sufficient.
 
 **响应示例 / Response Example：**
 ```json
