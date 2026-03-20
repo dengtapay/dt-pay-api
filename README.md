@@ -224,7 +224,7 @@ testLogin();
 
 ### 1. 创建代收订单 / Create Collection Order
 
-创建代收订单接口，需要Token认证。**系统会自动选择最优通道**，前端无需指定通道。
+创建代收订单接口，需要Token认证。
 > Create collection order interface, requires Token authentication. **The system automatically selects the optimal channel**, no need to specify the channel on the frontend.
 
 **接口地址 / API Address：** `POST /api/merchant/orders/collect/create`
