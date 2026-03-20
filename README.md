@@ -118,12 +118,14 @@ const sign = crypto.createHmac('sha256', secretKey).update(signContent).digest('
   ```json
   {
     "account": "merchant001",
-    "authCode": "550e8400-e29b-41d4-a716-446655440000"
+    "authCode": "550e8400-e29b-41d4-a716-446655440000",
+    "expire": 60
   }
   ```
 - **参数说明 / Parameter Description：**
   - `account` (必填): 商户账号 / Merchant account
   - `authCode` (必填): 第一步获取的授权码（2分钟内有效，一次性使用）/ Authorization code from step 1 (valid for 2 minutes, one-time use)
+  - `expire` (可选): Token过期时间，单位：分钟。范围：1~480分钟（8小时），不传默认480分钟 / Token expiration time in minutes. Range: 1-480 minutes (8 hours), default is 480 minutes if not provided
 
 - **响应示例 / Response Example：**
   ```json
@@ -132,8 +134,8 @@ const sign = crypto.createHmac('sha256', secretKey).update(signContent).digest('
     "message": "登录成功 / Login successful",
     "result": {
       "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "expiresIn": 28800,
-    "user": {
+      "expiresIn": 3600,
+      "user": {
         "id": 1,
         "account": "merchant001",
         "accountType": "merchant"
@@ -141,6 +143,11 @@ const sign = crypto.createHmac('sha256', secretKey).update(signContent).digest('
     }
   }
   ```
+
+- **响应字段说明 / Response Field Description：**
+  - `token`: JWT Token，用于后续接口认证 / JWT Token for subsequent API authentication
+  - `expiresIn`: Token实际过期时间，单位：秒 / Actual token expiration time in seconds
+  - `user`: 用户信息 / User information
 
 - **常见错误码 / Common Error Codes：**
     - `400`: 参数错误 / 授权码过期或格式不正确 / Parameter error / Authorization code expired or incorrectly formatted
@@ -153,8 +160,8 @@ const sign = crypto.createHmac('sha256', secretKey).update(signContent).digest('
    Use the account's SecretKey to generate a signature, call `/access-code` to get access_code.
 2. 提交 `account + authCode` 至 `/secret/login` 换取 JWT（authCode 2分钟内有效，一次性使用）。
    Submit `account + authCode` to `/secret/login` to exchange for JWT (authCode valid for 2 minutes, one-time use).
-3. JWT 有效期 8小时，可通过 `Authorization: Bearer {token}` 调用后续接口。
-   JWT is valid for 8 hours, subsequent interfaces can be called via `Authorization: Bearer {token}`.
+3. JWT 有效期默认8小时，可通过 `expire` 参数自定义（1~480分钟），通过 `Authorization: Bearer {token}` 调用后续接口。
+   JWT is valid for 8 hours by default, can be customized via `expire` parameter (1-480 minutes), subsequent interfaces can be called via `Authorization: Bearer {token}`.
 
 #### Js完整登录示例 / Quick Test in Browser Console
 
@@ -477,9 +484,10 @@ echo "access_code: $ACCESS_CODE"
 ### 步骤2: 获取 Token / Step 2: Obtain Token
 
 ```bash
+# expire 可选，单位：分钟，范围1~480，不传默认480
 TOKEN=$(curl -s -X POST http://localhost:8099/api/oauth2/merchant/secret/login \
   -H "Content-Type: application/json" \
-  -d "{\"account\":\"merchant001\",\"authCode\":\"$ACCESS_CODE\"}" \
+  -d "{\"account\":\"merchant001\",\"authCode\":\"$ACCESS_CODE\",\"expire\":60}" \
   | jq -r '.result.token')
 echo "token: $TOKEN"
 ```
@@ -490,6 +498,7 @@ echo "token: $TOKEN"
 const account = 'merchant001';
 const secretKey = 'your-secret-key';
 const baseUrl = 'http://localhost:8099';
+const expire = 60; // 可选：Token过期时间（分钟），范围1~480，不传默认480
 
 // 生成 HMAC-SHA256 签名（浏览器环境）/ Generate HMAC-SHA256 signature (Browser)
 async function generateSign(timestamp, account, key) {
@@ -530,10 +539,11 @@ async function login() {
   const response2 = await fetch(`${baseUrl}/api/oauth2/merchant/secret/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ account, authCode })
+    body: JSON.stringify({ account, authCode, expire }) // expire 可选
   });
   const data2 = await response2.json();
   console.log('token:', data2.result.token);
+  console.log('expiresIn:', data2.result.expiresIn, '秒');
 
   return data2.result.token;
 }
@@ -549,6 +559,7 @@ const crypto = require('crypto');
 const account = 'merchant001';
 const secretKey = 'your-secret-key';
 const baseUrl = 'http://localhost:8099';
+const expire = 60; // 可选：Token过期时间（分钟），范围1~480，不传默认480
 
 // 生成签名 / Generate signature
 function generateSign(content, key) {
@@ -574,10 +585,11 @@ async function login() {
   const response2 = await fetch(`${baseUrl}/api/oauth2/merchant/secret/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ account, authCode })
+    body: JSON.stringify({ account, authCode, expire }) // expire 可选
   });
   const data2 = await response2.json();
   console.log('token:', data2.result.token);
+  console.log('expiresIn:', data2.result.expiresIn, '秒');
 
   return data2.result.token;
 }
@@ -619,7 +631,7 @@ curl -X POST http://localhost:8099/api/merchant/orders/payout/create \
 
 ## 注意事项 / Notes
 
-1. **Token有效期 / Token Expiration Time**：Token有效期为24小时，过期后需要重新获取 / Token is valid for 24 hours, needs to be re-obtained after expiration
+1. **Token有效期 / Token Expiration Time**：Token默认有效期为8小时（480分钟），可通过 `expire` 参数自定义（范围1~480分钟），过期后需要重新获取 / Token default validity is 8 hours (480 minutes), can be customized via `expire` parameter (range 1-480 minutes), needs to be re-obtained after expiration
 2. **密钥安全 / Key Security**：请妥善保管密钥，不要泄露给第三方 / Please keep the keys properly and do not leak them to third parties
 3. **余额检查 / Balance Check**：创建代付订单前，系统会自动检查账户余额是否充足 / Before creating a payout order, the system will automatically check if the account balance is sufficient
 4. **通道代码 / Channel Codes**：请使用系统中已配置的通道代码 / Please use the channel codes already configured in the system
