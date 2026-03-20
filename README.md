@@ -126,7 +126,7 @@ const sign = crypto.createHmac('sha256', secretKey).update(signContent).digest('
 - **参数说明 / Parameter Description：**
   - `account` (必填): 商户账号 / Merchant account
   - `authCode` (必填): 第一步获取的授权码（2分钟内有效，一次性使用）/ Authorization code from step 1 (valid for 2 minutes, one-time use)
-  - `expire` (可选): Token过期时间，单位：分钟。范围：1~480分钟（8小时），不传默认480分钟 / Token expiration time in minutes. Range: 1-480 minutes (8 hours), default is 480 minutes if not provided
+  - `expire` (可选): Token过期时间，单位：分钟。范围：1~240分钟（4小时），不传默认240分钟 / Token expiration time in minutes. Range: 1-240 minutes (4 hours), default is 240 minutes if not provided
 
 - **响应示例 / Response Example：**
   ```json
@@ -161,8 +161,8 @@ const sign = crypto.createHmac('sha256', secretKey).update(signContent).digest('
    Use the account's SecretKey to generate a signature, call `/access-code` to get access_code.
 2. 提交 `account + authCode` 至 `/secret/login` 换取 JWT（authCode 2分钟内有效，一次性使用）。
    Submit `account + authCode` to `/secret/login` to exchange for JWT (authCode valid for 2 minutes, one-time use).
-3. JWT 有效期默认8小时，可通过 `expire` 参数自定义（1~480分钟），通过 `Authorization: Bearer {token}` 调用后续接口。
-   JWT is valid for 8 hours by default, can be customized via `expire` parameter (1-480 minutes), subsequent interfaces can be called via `Authorization: Bearer {token}`.
+3. JWT 有效期默认4小时，可通过 `expire` 参数自定义（1~240分钟），通过 `Authorization: Bearer {token}` 调用后续接口。
+   JWT is valid for 4 hours by default, can be customized via `expire` parameter (1-240 minutes), subsequent interfaces can be called via `Authorization: Bearer {token}`.
 
 #### Js完整登录示例 / Quick Test in Browser Console
 
@@ -224,8 +224,8 @@ testLogin();
 
 ### 1. 创建代收订单 / Create Collection Order
 
-创建代收订单接口，需要Token认证。
-> Create collection order interface, requires Token authentication.
+创建代收订单接口，需要Token认证。**系统会自动选择最优通道**，前端无需指定通道。
+> Create collection order interface, requires Token authentication. **The system automatically selects the optimal channel**, no need to specify the channel on the frontend.
 
 **接口地址 / API Address：** `POST /api/merchant/orders/collect/create`
 
@@ -239,17 +239,26 @@ Content-Type: application/json
 ```json
 {
   "amount": 1000.00,
-  "channelCode": "ALIPAY_COLLECT",
-  "currencyCode": "CNY",
-  "remark": "订单备注信息 / Order remarks"
+  "currencyCode": "INR",
+  "remark": "订单备注信息 / Order remarks",
+  "phone": "911234567890",
+  "name": "Customer Name",
+  "email": "customer@example.com",
+  "account": "10073974372"
 }
 ```
 
 **参数说明 / Parameter Description：**
 - `amount` (必填 / Required): 订单金额，浮点数 / Order amount, floating point number
-- `channelCode` (必填 / Required): 通道代码，字符串 / Channel code, string
-- `currencyCode` (必填 / Required): 币种代码，字符串 / Currency code, string
+- `currencyCode` (必填 / Required): 币种代码，字符串（如 INR、CNY）/ Currency code, string (e.g., INR, CNY)
 - `remark` (可选 / Optional): 订单备注 / Order remarks
+- `phone` (可选 / Optional): 客户手机号，部分通道需要 / Customer phone number, required by some channels
+- `name` (可选 / Optional): 客户名称，部分通道需要 / Customer name, required by some channels
+- `email` (可选 / Optional): 客户邮箱，部分通道需要 / Customer email, required by some channels
+- `account` (可选 / Optional): 客户账号，部分通道需要 / Customer account, required by some channels
+
+> ⚠️ **通道选择说明 / Channel Selection Note**: 系统会根据币种、费率等因素自动选择最优通道，商户无需关心具体通道。响应中会返回实际使用的通道信息。
+> The system automatically selects the optimal channel based on currency, fees, etc. Merchants do not need to care about the specific channel. The response returns the actual channel used.
 
 **响应示例 / Response Example：**
 ```json
@@ -264,20 +273,30 @@ Content-Type: application/json
     "amount": 1000.00,
     "fee": 6.00,
     "rate": 0.6,
-    "channelId": 1,
-    "channelCode": "ALIPAY_COLLECT",
-    "channelName": "支付宝代收 / Alipay Collection",
-    "currencyCode": "CNY",
+    "channelId": 7,
+    "channelCode": "BEEPAY",
+    "channelName": "BeePay",
+    "currencyCode": "INR",
     "status": "pending",
     "remark": "订单备注信息 / Order remarks",
+    "paymentUrl": "https://pay.beepay.com/xxx",
     "createdAt": "2024-01-01T12:00:00Z"
   }
 }
 ```
 
+**响应字段说明 / Response Field Description：**
+- `orderNo`: 系统订单号 / System order number
+- `channelCode`: 系统自动选择的通道代码 / Channel code automatically selected by the system
+- `channelName`: 通道名称 / Channel name
+- `paymentUrl`: 支付页面地址（部分通道返回）/ Payment page URL (returned by some channels)
+- `fee`: 手续费 / Fee
+- `rate`: 费率 / Rate
+
 **错误响应 / Error Response：**
-- `400`: 参数错误、账户不存在、通道不存在 / Parameter error, account does not exist, channel does not exist
+- `400`: 参数错误、账户不存在 / Parameter error, account does not exist
 - `401`: 未认证或Token无效 / Not authenticated or token invalid
+- `404`: 未找到可用通道 / No available channel found
 - `500`: 创建订单失败 / Order creation failed
 
 **使用示例 / Usage Example：**
@@ -287,9 +306,12 @@ curl -X POST http://localhost:8099/api/merchant/orders/collect/create \
   -H "Content-Type: application/json" \
   -d '{
     "amount": 1000.00,
-    "channelCode": "ALIPAY_COLLECT",
-    "currencyCode": "CNY",
-    "remark": "测试订单 / Test order"
+    "currencyCode": "INR",
+    "remark": "测试订单 / Test order",
+    "phone": "911234567890",
+    "name": "Test User",
+    "email": "test@test.com",
+    "account": "10073974372"
   }'
 ```
 
@@ -297,8 +319,8 @@ curl -X POST http://localhost:8099/api/merchant/orders/collect/create \
 
 ### 2. 创建代付订单 / Create Payout Order
 
-创建代付订单接口，需要Token认证。
-> Create payout order interface, requires Token authentication.
+创建代付订单接口，需要Token认证。**系统会自动选择最优通道**。
+> Create payout order interface, requires Token authentication. **The system automatically selects the optimal channel**.
 
 **接口地址 / API Address：** `POST /api/merchant/orders/payout/create`
 
@@ -314,9 +336,7 @@ Content-Type: application/json
   "payee": "收款人姓名 / Payee name",
   "payeeAccount": "收款账户 / Payee account",
   "amount": 500.00,
-  "channelCode": "ALIPAY_PAYOUT",
-  "currencyCode": "CNY",
-  "payoutType": "system",
+  "currencyCode": "INR",
   "remark": "代付备注 / Payout remarks"
 }
 ```
@@ -325,10 +345,11 @@ Content-Type: application/json
 - `payee` (必填 / Required): 收款人姓名 / Payee name
 - `payeeAccount` (必填 / Required): 收款账户 / Payee account
 - `amount` (必填 / Required): 订单金额，浮点数 / Order amount, floating point number
-- `channelCode` (必填 / Required): 通道代码 / Channel code
 - `currencyCode` (必填 / Required): 币种代码 / Currency code
-- `payoutType` (可选 / Optional): 代付类型，默认为"system" / Payout type, default is "system"
 - `remark` (可选 / Optional): 订单备注 / Order remarks
+
+> ⚠️ **通道选择说明 / Channel Selection Note**: 代付订单同样由系统自动选择通道，且会检查通道余额是否充足。
+> Payout orders also have channels automatically selected by the system, and will check if the channel balance is sufficient.
 
 **响应示例 / Response Example：**
 ```json
@@ -348,11 +369,10 @@ Content-Type: application/json
     "singleFee": 0.3,
     "additionalFee": 0.05,
     "withdrawalTime": 2,
-    "channelId": 1,
-    "channelCode": "ALIPAY_PAYOUT",
-    "channelName": "支付宝代付 / Alipay Payout",
-    "currencyCode": "CNY",
-    "payoutType": "system",
+    "channelId": 7,
+    "channelCode": "BEEPAY",
+    "channelName": "BeePay",
+    "currencyCode": "INR",
     "status": "pending",
     "remark": "代付备注 / Payout remarks",
     "createdAt": "2024-01-01T12:00:00Z"
@@ -361,8 +381,9 @@ Content-Type: application/json
 ```
 
 **错误响应 / Error Response：**
-- `400`: 参数错误、账户不存在、通道不存在、钱包不存在、余额不足 / Parameter error, account does not exist, channel does not exist, wallet does not exist, insufficient balance
+- `400`: 参数错误、账户不存在、余额不足 / Parameter error, account does not exist, insufficient balance
 - `401`: 未认证或Token无效 / Not authenticated or token invalid
+- `404`: 未找到可用通道 / No available channel found
 - `500`: 创建订单失败 / Order creation failed
 
 **使用示例 / Usage Example：**
@@ -374,9 +395,7 @@ curl -X POST http://localhost:8099/api/merchant/orders/payout/create \
     "payee": "张三 / Zhang San",
     "payeeAccount": "13800138000",
     "amount": 500.00,
-    "channelCode": "ALIPAY_PAYOUT",
-    "currencyCode": "CNY",
-    "payoutType": "system",
+    "currencyCode": "INR",
     "remark": "测试代付 / Test payout"
   }'
 ```
@@ -406,7 +425,7 @@ Authorization: Bearer {token}
     {
       "id": 1,
       "accountId": 1,
-      "currencyCode": "CNY",
+      "currencyCode": "INR",
       "totalBalance": 10000.00,
       "availableBalance": 9500.00,
       "frozenBalance": 500.00
@@ -445,7 +464,7 @@ Authorization: Bearer {token}
         "type": "代收收入 / Collection Income",
         "amount": 1000.00,
         "balance": 10000.00,
-        "currencyCode": "CNY",
+        "currencyCode": "INR",
         "relatedOrderNo": "CO202401011200001234",
         "status": "success",
         "remark": "代收订单成功 / Collection order successful",
@@ -496,111 +515,6 @@ TOKEN=$(curl -s -X POST http://localhost:8099/api/oauth2/merchant/secret/login \
 echo "token: $TOKEN"
 ```
 
-### 浏览器完整示例 / Browser Complete Example
-
-```javascript
-const account = 'merchant001';
-const secretKey = 'your-secret-key';
-const baseUrl = 'http://localhost:8099';
-const expire = 60; // 可选：Token过期时间（分钟），范围1~480，不传默认480
-
-// 生成 HMAC-SHA256 签名（浏览器环境）/ Generate HMAC-SHA256 signature (Browser)
-async function generateSign(timestamp, account, key) {
-  const signContent = `${timestamp}|${account}`;
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(key);
-  const messageData = encoder.encode(signContent);
-
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-
-  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
-  return Array.from(new Uint8Array(signature))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-async function login() {
-  // Step 1: 获取 access_code / Get access_code
-  const timestamp = Math.floor(Date.now() / 1000);
-  const sign = await generateSign(timestamp, account, secretKey);
-
-  const response1 = await fetch(`${baseUrl}/api/oauth2/merchant/access-code`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ account, timestamp, sign })
-  });
-  const data1 = await response1.json();
-  const authCode = data1.result.accessCode;
-  console.log('access_code:', authCode);
-
-  // Step 2: 获取 Token / Get Token (无需签名 / No signature required)
-  const response2 = await fetch(`${baseUrl}/api/oauth2/merchant/secret/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ account, authCode, expire }) // expire 可选
-  });
-  const data2 = await response2.json();
-  console.log('token:', data2.result.token);
-  console.log('expiresIn:', data2.result.expiresIn, '秒');
-
-  return data2.result.token;
-}
-
-login();
-```
-
-### Node.js 完整示例 / Node.js Complete Example
-
-```javascript
-const crypto = require('crypto');
-
-const account = 'merchant001';
-const secretKey = 'your-secret-key';
-const baseUrl = 'http://localhost:8099';
-const expire = 60; // 可选：Token过期时间（分钟），范围1~480，不传默认480
-
-// 生成签名 / Generate signature
-function generateSign(content, key) {
-  return crypto.createHmac('sha256', key).update(content).digest('hex');
-}
-
-async function login() {
-  // Step 1: 获取 access_code / Get access_code
-  const timestamp = Math.floor(Date.now() / 1000);
-  const signContent = `${timestamp}|${account}`;
-  const sign = generateSign(signContent, secretKey);
-
-  const response1 = await fetch(`${baseUrl}/api/oauth2/merchant/access-code`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ account, timestamp, sign })
-  });
-  const data1 = await response1.json();
-  const authCode = data1.result.accessCode;
-  console.log('access_code:', authCode);
-
-  // Step 2: 获取 Token / Get Token (无需签名 / No signature required)
-  const response2 = await fetch(`${baseUrl}/api/oauth2/merchant/secret/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ account, authCode, expire }) // expire 可选
-  });
-  const data2 = await response2.json();
-  console.log('token:', data2.result.token);
-  console.log('expiresIn:', data2.result.expiresIn, '秒');
-
-  return data2.result.token;
-}
-
-login();
-```
-
 ### 步骤3: 创建代收订单 / Step 3: Create Collection Order
 
 ```bash
@@ -609,9 +523,12 @@ curl -X POST http://localhost:8099/api/merchant/orders/collect/create \
   -H "Content-Type: application/json" \
   -d '{
     "amount": 1000.00,
-    "channelCode": "ALIPAY_COLLECT",
-    "currencyCode": "CNY",
-    "remark": "测试代收订单 / Test collection order"
+    "currencyCode": "INR",
+    "remark": "测试代收订单 / Test collection order",
+    "phone": "911234567890",
+    "name": "Test User",
+    "email": "test@test.com",
+    "account": "10073974372"
   }'
 ```
 
@@ -625,8 +542,7 @@ curl -X POST http://localhost:8099/api/merchant/orders/payout/create \
     "payee": "收款人 / Payee",
     "payeeAccount": "收款账户 / Payee account",
     "amount": 500.00,
-    "channelCode": "ALIPAY_PAYOUT",
-    "currencyCode": "CNY",
+    "currencyCode": "INR",
     "remark": "测试代付订单 / Test payout order"
   }'
 ```
@@ -635,11 +551,12 @@ curl -X POST http://localhost:8099/api/merchant/orders/payout/create \
 <br/><br/><br/>
 ## 注意事项 / Notes
 
-1. **Token有效期 / Token Expiration Time**：Token默认有效期为8小时（480分钟），可通过 `expire` 参数自定义（范围1~480分钟），过期后需要重新获取 / Token default validity is 8 hours (480 minutes), can be customized via `expire` parameter (range 1-480 minutes), needs to be re-obtained after expiration
+1. **Token有效期 / Token Expiration Time**：Token默认有效期为4小时（240分钟），可通过 `expire` 参数自定义（范围1~240分钟），过期后需要重新获取 / Token default validity is 4 hours (240 minutes), can be customized via `expire` parameter (range 1-240 minutes), needs to be re-obtained after expiration
 2. **密钥安全 / Key Security**：请妥善保管密钥，不要泄露给第三方 / Please keep the keys properly and do not leak them to third parties
-3. **余额检查 / Balance Check**：创建代付订单前，系统会自动检查账户余额是否充足 / Before creating a payout order, the system will automatically check if the account balance is sufficient
-4. **通道代码 / Channel Codes**：请使用系统中已配置的通道代码 / Please use the channel codes already configured in the system
-5. **币种代码 / Currency Codes**：支持CNY、USD等币种，具体以系统配置为准 / Supports currencies such as CNY, USD, etc., subject to system configuration
+3. **余额检查 / Balance Check**：创建代付订单前，系统会自动检查通道余额是否充足 / Before creating a payout order, the system will automatically check if the channel balance is sufficient
+4. **通道选择 / Channel Selection**：系统自动选择最优通道，商户无需指定通道代码 / The system automatically selects the optimal channel, merchants do not need to specify the channel code
+5. **币种代码 / Currency Codes**：支持 INR、CNY、USD 等币种，具体以系统配置为准 / Supports currencies such as INR, CNY, USD, etc., subject to system configuration
+6. **用户信息 / User Information**：部分通道需要提供 phone、name、email、account 等用户信息，请在创建订单时一并提交 / Some channels require user information such as phone, name, email, account, please submit them when creating orders
 
 ---
 <br/><br/><br/>
@@ -649,7 +566,7 @@ curl -X POST http://localhost:8099/api/merchant/orders/payout/create \
 - `400`: 请求参数错误 / Request parameter error
 - `401`: 未认证或认证失败 / Not authenticated or authentication failed
 - `403`: 权限不足或账户被禁用 / Insufficient permissions or account disabled
-- `404`: 资源不存在 / Resource does not exist
+- `404`: 资源不存在或未找到可用通道 / Resource does not exist or no available channel found
 - `500`: 服务器内部错误 / Internal server error
 
 ---
