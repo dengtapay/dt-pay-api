@@ -4,6 +4,7 @@
 
 本文档描述了DT支付系统提供的订单创建接口和密钥OAuth2登录接口的使用方式。
 > This document describes how to use the order creation interfaces and secret key OAuth2 login interface provided by the DT payment system.
+
 <br/><br/><br/>
 ## 认证方式 / Authentication Methods
 
@@ -221,7 +222,7 @@ testLogin();
 <br/><br/><br/>
 ## 订单接口 / Order Interfaces
 
-### 2. 创建代收订单 / Create Collection Order
+### 1. 创建代收订单 / Create Collection Order
 
 创建代收订单接口，需要Token认证。
 > Create collection order interface, requires Token authentication.
@@ -294,7 +295,7 @@ curl -X POST http://localhost:8099/api/merchant/orders/collect/create \
 
 ---
 
-### 3. 创建代付订单 / Create Payout Order
+### 2. 创建代付订单 / Create Payout Order
 
 创建代付订单接口，需要Token认证。
 > Create payout order interface, requires Token authentication.
@@ -380,10 +381,11 @@ curl -X POST http://localhost:8099/api/merchant/orders/payout/create \
   }'
 ```
 ---
+
 <br/><br/><br/>
 ## 钱包接口 / Wallet Interfaces
 
-### 4. 获取钱包信息 / Get Wallet Information
+### 1. 获取钱包信息 / Get Wallet Information
 
 获取当前账户的钱包列表，包含各种币种的余额信息。
 > Get the wallet list for the current account, including balance information for various currencies.
@@ -413,7 +415,7 @@ Authorization: Bearer {token}
 }
 ```
 
-### 5. 获取交易流水 / Get Transaction History
+### 2. 获取交易流水 / Get Transaction History
 
 获取当前账户的资金交易流水，支持分页。
 > Get the fund transaction history for the current account, supports pagination.
@@ -461,6 +463,7 @@ Authorization: Bearer {token}
 ```
 
 ---
+
 <br/><br/><br/>
 ## 完整调用流程示例 / Complete Call Flow Example
 
