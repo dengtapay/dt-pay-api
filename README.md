@@ -615,7 +615,7 @@ curl -X POST http://localhost:8099/api/merchant/orders/collect/create \
   }'
 ```
 
-### 步骤3: 创建代付订单 / Step 3: Create Payout Order
+### 步骤4: 创建代付订单 / Step 4: Create Payout Order
 
 ```bash
 curl -X POST http://localhost:8099/api/merchant/orders/payout/create \
