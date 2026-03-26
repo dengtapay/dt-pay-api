@@ -80,6 +80,39 @@ const sign = crypto.createHmac('sha256', secretKey).update(signContent).digest('
 
 - **接口地址 / API Address：** `POST /api/oauth2/merchant/access-code`
 - **请求头 / Request Headers：** `Content-Type: application/json`
+
+**方式一：使用 accountHash（推荐，账户信息不暴露）/ Method 1: Using accountHash (Recommended, account hidden)**
+
+- **请求体 / Request Body：**
+  ```json
+  {
+    "accountHash": "a1b2c3d4e5f6...",
+    "timestamp": 1739548800,
+    "sign": "signature..."
+  }
+  ```
+
+- **accountHash 生成方式 / How to generate accountHash:**
+  ```javascript
+  // accountHash = HMAC-SHA256(account, secretKey)
+  async function generateAccountHash(account, secretKey) {
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(secretKey),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(account));
+    return Array.from(new Uint8Array(signature))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+  ```
+
+**方式二：使用 account 明文（向后兼容）/ Method 2: Using account plaintext (Backward compatible)**
+
 - **请求体 / Request Body：**
   ```json
   {
@@ -88,12 +121,14 @@ const sign = crypto.createHmac('sha256', secretKey).update(signContent).digest('
     "sign": "a1b2c3d4e5f6..."
   }
   ```
+
 - **参数说明 / Parameter Description：**
-  - `account` (必填): 商户账号 / Merchant account
+  - `accountHash` (可选): 账户哈希，推荐使用 / Account hash, recommended
+  - `account` (可选): 商户账号，与 accountHash 二选一 / Merchant account, choose one with accountHash
   - `timestamp` (必填): Unix时间戳（秒）/ Unix timestamp (seconds)
   - `sign` (必填): HMAC-SHA256签名 / HMAC-SHA256 signature
 
-- **签名内容 / Signature Content**: `timestamp + "|" + account`
+- **签名内容 / Signature Content**: `timestamp + "|" + account`（使用实际的 account 值）
 
 - **响应示例 / Response Example：**
   ```json
@@ -175,6 +210,20 @@ const account = 'merchant001';
 const secretKey = 'your-secret-key';  // 替换为实际密钥 / Replace with actual secret key
 const baseUrl = 'http://localhost:8099';
 
+// 生成 accountHash / Generate accountHash
+async function generateAccountHash(account, key) {
+  const encoder = new TextEncoder();
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(key),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(account));
+  return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 // 生成签名 / Generate signature
 async function generateSign(timestamp, account, key) {
   const signContent = `${timestamp}|${account}`;
@@ -186,24 +235,26 @@ async function generateSign(timestamp, account, key) {
   return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// 测试登录 / Test login
+// 测试登录（使用 accountHash）/ Test login (using accountHash)
 async function testLogin() {
   const timestamp = Math.floor(Date.now() / 1000);
+  const accountHash = await generateAccountHash(account, secretKey);
   const sign = await generateSign(timestamp, account, secretKey);
   console.log('timestamp:', timestamp);
+  console.log('accountHash:', accountHash);
   console.log('sign:', sign);
 
-  // Step 1: 获取 access_code
+  // Step 1: 获取 access_code（使用 accountHash，账户不暴露）
   const r1 = await fetch(`${baseUrl}/api/oauth2/merchant/access-code`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ account, timestamp, sign })
+    body: JSON.stringify({ accountHash, timestamp, sign })
   });
   const d1 = await r1.json();
   console.log('Step 1 response:', d1);
   if (d1.errorCode !== 0) return;
 
-  // Step 2: 获取 Token
+  // Step 2: 获取 Token（第二步仍需 account）
   const r2 = await fetch(`${baseUrl}/api/oauth2/merchant/secret/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -244,7 +295,9 @@ Content-Type: application/json
   "phone": "911234567890",
   "name": "Customer Name",
   "email": "customer@example.com",
-  "account": "10073974372"
+  "account": "10073974372",
+  "callbackUrl": "https://your-server.com/callback",
+  "sign": "a1b2c3d4e5f6..."
 }
 ```
 
@@ -256,6 +309,8 @@ Content-Type: application/json
 - `name` (可选 / Optional): 客户名称，部分通道需要 / Customer name, required by some channels
 - `email` (可选 / Optional): 客户邮箱，部分通道需要 / Customer email, required by some channels
 - `account` (可选 / Optional): 客户账号，部分通道需要 / Customer account, required by some channels
+- `callbackUrl` (可选 / Optional): 商户回调地址，订单状态变更时系统会向该地址发送通知 / Merchant callback URL, system will send notification when order status changes
+- `sign` (可选 / Optional): 回调签名，使用商户密钥(SecretKey)对 callbackUrl 进行 HMAC-SHA256 签名 / Callback signature, HMAC-SHA256 signature of callbackUrl using merchant SecretKey
 
 **响应示例 / Response Example：**
 ```json
@@ -327,18 +382,30 @@ Content-Type: application/json
 {
   "payee": "收款人姓名 / Payee name",
   "payeeAccount": "收款账户 / Payee account",
+  "bankCode": "HDFC",
+  "branchCode": "HDFC0001234",
+  "bankName": "HDFC Bank",
+  "bankAddress": "Mumbai, India",
   "amount": 500.00,
   "currencyCode": "INR",
-  "remark": "代付备注 / Payout remarks"
+  "remark": "代付备注 / Payout remarks",
+  "callbackUrl": "https://your-server.com/callback",
+  "sign": "a1b2c3d4e5f6..."
 }
 ```
 
 **参数说明 / Parameter Description：**
 - `payee` (必填 / Required): 收款人姓名 / Payee name
 - `payeeAccount` (必填 / Required): 收款账户 / Payee account
+- `bankCode` (必填 / Required): 银行代码 / Bank code
+- `branchCode` (可选 / Optional): 支行代码 / Branch code
+- `bankName` (可选 / Optional): 银行名称 / Bank name
+- `bankAddress` (可选 / Optional): 银行地址 / Bank address
 - `amount` (必填 / Required): 订单金额，浮点数 / Order amount, floating point number
 - `currencyCode` (必填 / Required): 币种代码 / Currency code
 - `remark` (可选 / Optional): 订单备注 / Order remarks
+- `callbackUrl` (可选 / Optional): 商户回调地址，订单状态变更时系统会向该地址发送通知 / Merchant callback URL, system will send notification when order status changes
+- `sign` (可选 / Optional): 回调签名，使用商户密钥(SecretKey)对 callbackUrl 进行 HMAC-SHA256 签名 / Callback signature, HMAC-SHA256 signature of callbackUrl using merchant SecretKey
 
 **响应示例 / Response Example：**
 ```json
@@ -352,6 +419,10 @@ Content-Type: application/json
     "merchantName": "merchant001",
     "payee": "收款人姓名 / Payee name",
     "payeeAccount": "收款账户 / Payee account",
+    "bankCode": "HDFC",
+    "branchCode": "HDFC0001234",
+    "bankName": "HDFC Bank",
+    "bankAddress": "Mumbai, India",
     "amount": 500.00,
     "fee": 3.50,
     "rate": 0.5,
@@ -367,7 +438,7 @@ Content-Type: application/json
 ```
 
 **错误响应 / Error Response：**
-- `400`: 参数错误、账户不存在、余额不足 / Parameter error, account does not exist, insufficient balance
+- `400`: 参数错误、账户不存在、余额不足、银行代码不能为空 / Parameter error, account does not exist, insufficient balance, bank code cannot be empty
 - `401`: 未认证或Token无效 / Not authenticated or token invalid
 - `404`: 未找到可用通道 / No available channel found
 - `500`: 创建订单失败 / Order creation failed
@@ -380,6 +451,10 @@ curl -X POST http://localhost:8099/api/merchant/orders/payout/create \
   -d '{
     "payee": "张三 / Zhang San",
     "payeeAccount": "13800138000",
+    "bankCode": "HDFC",
+    "branchCode": "HDFC0001234",
+    "bankName": "HDFC Bank",
+    "bankAddress": "Mumbai, India",
     "amount": 500.00,
     "currencyCode": "INR",
     "remark": "测试代付 / Test payout"
@@ -527,6 +602,10 @@ curl -X POST http://localhost:8099/api/merchant/orders/payout/create \
   -d '{
     "payee": "收款人 / Payee",
     "payeeAccount": "收款账户 / Payee account",
+    "bankCode": "HDFC",
+    "branchCode": "HDFC0001234",
+    "bankName": "HDFC Bank",
+    "bankAddress": "Mumbai, India",
     "amount": 500.00,
     "currencyCode": "INR",
     "remark": "测试代付订单 / Test payout order"
@@ -543,6 +622,97 @@ curl -X POST http://localhost:8099/api/merchant/orders/payout/create \
 4. **通道选择 / Channel Selection**：系统自动选择最优通道，商户无需指定通道代码 / The system automatically selects the optimal channel, merchants do not need to specify the channel code
 5. **币种代码 / Currency Codes**：支持 INR、CNY、USD 等币种，具体以系统配置为准 / Supports currencies such as INR, CNY, USD, etc., subject to system configuration
 6. **用户信息 / User Information**：部分通道需要提供 phone、name、email、account 等用户信息，请在创建订单时一并提交 / Some channels require user information such as phone, name, email, account, please submit them when creating orders
+
+---
+<br/><br/><br/>
+## 商户回调通知 / Merchant Callback Notification
+
+当订单状态变更为成功时，如果创建订单时提供了 `callbackUrl`，系统会向该地址发送 POST 请求通知商户。
+
+> When the order status changes to success, if `callbackUrl` is provided when creating the order, the system will send a POST request to that URL to notify the merchant.
+
+### 回调请求格式 / Callback Request Format
+
+**请求方式 / Method：** `POST`
+
+**请求头 / Headers：**
+```
+Content-Type: application/json
+User-Agent: DT-Payment-Callback/1.0
+```
+
+**请求体 / Request Body：**
+```json
+{
+  "orderNo": "CO202401011200001234",
+  "orderType": "collect",
+  "amount": 994.00,
+  "status": "success",
+  "currencyCode": "INR",
+  "timestamp": 1739548800,
+  "sign": "a1b2c3d4e5f6..."
+}
+```
+
+**字段说明 / Field Description：**
+- `orderNo`: 订单号 / Order number
+- `orderType`: 订单类型，`collect`（代收）或 `payout`（代付）/ Order type, 'collect' or 'payout'
+- `amount`: 扣除手续费后的实际金额 / Actual amount after deducting fees
+- `status`: 订单状态，目前只有 `success` / Order status, currently only `success`
+- `currencyCode`: 币种代码 / Currency code
+- `timestamp`: Unix 时间戳（秒）/ Unix timestamp (seconds)
+- `sign`: 签名，用于验证请求来源 / Signature for verifying request source
+
+### 签名验证 / Signature Verification
+
+签名生成方式：`HMAC-SHA256(orderNo + orderType + amount + timestamp, secretKey)`
+
+**签名内容 / Sign Content：** 将 `orderNo`、`orderType`、`amount`（保留 2 位小数）、`timestamp` 按顺序拼接
+
+**JavaScript 验证示例 / JavaScript Verification Example：**
+```javascript
+async function verifyCallback(callback, secretKey) {
+  const signContent = `${callback.orderNo}${callback.orderType}${callback.amount.toFixed(2)}${callback.timestamp}`;
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secretKey),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(signContent));
+  const expectedSign = Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+  return expectedSign === callback.sign;
+}
+```
+
+### 商户响应要求 / Merchant Response Requirement
+
+商户收到回调后，应返回以下格式的 JSON 响应：
+
+> After receiving the callback, the merchant should return a JSON response in the following format:
+
+```json
+{
+  "errorCode": 0,
+  "message": "success"
+}
+```
+
+### 重试机制 / Retry Mechanism
+
+- 如果回调失败（HTTP 状态码非 2xx 或响应 `errorCode` 非 0），系统会自动重试
+- 重试间隔：每 5 分钟一次
+- 最大重试次数：5 次
+- 5 次都失败后，系统会记录失败日志，不再重试
+
+> - If the callback fails (HTTP status code not 2xx or response `errorCode` not 0), the system will automatically retry
+> - Retry interval: every 5 minutes
+> - Maximum retries: 5 times
+> - After 5 failures, the system will log the failure and stop retrying
 
 ---
 <br/><br/><br/>
